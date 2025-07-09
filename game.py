@@ -63,7 +63,11 @@ class Game:
         if is_first and self.num_players > 2:
             i = 2
         players_since_no_raise = 0
+        updated_table_cards = False
         while players_since_no_raise < self.num_players:
+            if not updated_table_cards and not is_first and isinstance(self.players[i], AutomatedPlayer):
+                self.players[i].update_table_cards(self.table_cards_string[ : self.cards_shown])
+                updated_table_cards = True
             if self.players[i].is_active():
                 old_max_bet = self.max_bet
                 add_to_pot, self.max_bet = self.players[i].cue_for_action()
@@ -97,10 +101,13 @@ class Game:
     def show_table_cards(self, stage):
         print("-------Showing Cards-------")
         if stage == 0:
+            self.cards_shown = 3
             print(" | ".join(self.pretty_table_cards[ : 3]), "? | ?", sep = " | ")
         elif stage == 1:
+            self.cards_shown = 4
             print(" | ".join(self.pretty_table_cards[ : 4]), "?", sep = " | ")
         elif stage == 2:
+            self.cards_shown = 5
             print(" | ".join(self.pretty_table_cards))
 
     def round_end(self, winner_indices, winner_score):
@@ -181,5 +188,4 @@ class Game:
             print(", ".join(x for x in winner_names), "wins the pot.", sep = " ")
         else:
             print(", ".join(x for x in winner_names), "split the pot.", sep = " ")
-        if self.num_players > 2:
-            self.players = self.players[1 : ] + self.players[ : 1]    
+        self.players = self.players[1 : ] + self.players[ : 1]    
