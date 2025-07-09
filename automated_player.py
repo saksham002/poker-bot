@@ -97,6 +97,9 @@ class AutomatedPlayer(Player):
         self.pot = pot
         self.max_bet = max_bet
 
+    def update_table_cards(self, new_val):
+        self.table_cards_so_far = new_val
+
     def update_action_dict(self, round_bet, money):
         if len(self.round_action_dict["other_players_round_bets"]) == 0 or len(self.round_action_dict["other_players_round_bets"][-1]) == self.num_players - 1:
             self.round_action_dict["other_players_round_bets"].append([])
