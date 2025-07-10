@@ -80,6 +80,7 @@ class Player:
             raise ValueError(f"Player {self.name} is already all in. Exiting program.")
         self.round_bet += self.money 
         self.money = 0
+        print(f"Player {self.name}: All In")
         return max([self.max_bet, self.round_bet])
 
     def fold(self):

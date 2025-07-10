@@ -41,7 +41,6 @@ There are currently no automated tests for this project. Assistance in creating 
 ## 6. TODO's
 - Assumes num_players does not change, fix this.
 - Approach is player-style agnostic, potentially would like to add a state vector that describes play-style in some abstract space that is learnt for each player starting with a default rational value.
-- No option for the AI agent to raise during a betting round.
 - Not only should the num_cards_shown variable be used as input to the NNs but also some encoding of the cards on the table revealed thus far.
 
 ## 7. Prompt Conventions
@@ -50,3 +49,4 @@ When a file/directory name is mentioned using "@", any numbers following the fil
 - @<file_name> <number_1>,<number_2>,...,<number_k> : This will be used to refer to several line numbers comma-separated.
 - @<file_name> <number_l>-<number_r> : This will be used to refer to a range of lines inclusive of both ends.
 - The above two rules can be applied simultaneously as well to refer to a combination of stand-alone lines and ranges of lines.
+Additionally, pay special attention to words enclosed in double quotes ("") since these will always represent variable names/function names in the code that are important to the prompt.
