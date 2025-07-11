@@ -75,6 +75,9 @@ class Game:
             for j in range(self.num_players):
                 if isinstance(self.players[j], AutomatedPlayer):
                     self.players[j].update_table_cards(self.table_cards_string[ : self.cards_shown])
+                    self.players[j].is_latest_action_raise = False
+        
+        # fix update_action_dict calls for between card showings when num_players > 2.
         while players_since_no_raise < self.num_players:
             if self.players[i].is_active():
                 old_max_bet = self.max_bet
