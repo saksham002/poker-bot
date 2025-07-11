@@ -42,7 +42,7 @@ if __name__ == "__main__":
                     ctr += 1
                 load_checkpt_policy, load_checkpt_critic = game.end()
                 print(f"----------------------------Game {i + 1}: End----------------------------")
-                print(load_checkpt_critic, load_checkpt_policy, sep = " ")
+                print(load_checkpt_policy, load_checkpt_critic, sep = " ")
     finally:
         sys.stdout = original_stdout
         plotter.close()

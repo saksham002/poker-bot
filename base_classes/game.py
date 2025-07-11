@@ -71,11 +71,11 @@ class Game:
         if is_first and self.num_players > 2:
             i = 2
         players_since_no_raise = 0
-        updated_table_cards = [False for j in range(self.num_players)]
+        if not is_first:
+            for j in range(self.num_players):
+                if isinstance(self.players[j], AutomatedPlayer):
+                    self.players[j].update_table_cards(self.table_cards_string[ : self.cards_shown])
         while players_since_no_raise < self.num_players:
-            if not updated_table_cards[i] and not is_first and isinstance(self.players[i], AutomatedPlayer):
-                self.players[i].update_table_cards(self.table_cards_string[ : self.cards_shown])
-                updated_table_cards[i] = True
             if self.players[i].is_active():
                 old_max_bet = self.max_bet
                 old_round_bet, old_money = self.players[i].round_bet, self.players[i].money
@@ -224,18 +224,14 @@ class Game:
             print(", ".join(x for x in winner_names), "split the pot.", sep = " ")
 
     def end(self):
-        player_info = []
         all_automated_players = self.removed_automated_players + [p for p in self.players if isinstance(p, AutomatedPlayer)]
+        all_automated_players.sort(key = lambda x: int(x.get_name()[1 : ]))
         
+        policy_checkpoint_paths, critic_checkpoint_paths = [], []
         for player in all_automated_players:
             policy_checkpoint_path, critic_checkpoint_path = player.save_model()
-            player_info.append((player.get_name(), policy_checkpoint_path, critic_checkpoint_path))
-
-        # Sort by player name number to handle P1, P2, ... P10 correctly
-        player_info.sort(key = lambda x: int(x[0][1 : ]))
-
-        policy_checkpoint_paths = [info[1] for info in player_info]
-        critic_checkpoint_paths = [info[2] for info in player_info]
+            policy_checkpoint_paths.append(policy_checkpoint_path)
+            critic_checkpoint_paths.append(critic_checkpoint_path)
 
         if self.plotter:
             plot_data = [player.plot_data_game for player in all_automated_players]
