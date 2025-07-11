@@ -85,7 +85,7 @@ class AutomatedPlayer(Player):
         self.round_action_dict = {"self_round_bets" : [], "other_players_round_bets" : [], "other_players_money" : [], "has_folded" : [], "pots" : [], "neg_action_regrets" : [], "num_cards_seen_at_action" : [], "raise_rewards" : []}
         self.nn_vals = {"state_vecs" : [], "action_probs" : [], "log_prob_action" : [], "critic_outputs" : [], "expected_fold_prob_zero" : []}
         self.plot_data_game = {"critic_losses" : [], "policy_losses" : [], "fold_losses" : [], "total_policy_losses" : [], "rewards" : []}
-        self.num_table_cards_since_cache = 0
+        self.num_table_cards_since_cache = -1
         self.cached_probs = [0 for i in range(self.num_players)]
         
     def update_num_players(self, new_val):
@@ -106,7 +106,7 @@ class AutomatedPlayer(Player):
         self.pot = 0
         self.round_action_dict = {"self_round_bets" : [], "other_players_round_bets" : [], "other_players_money" : [], "has_folded" : [], "pots" : [], "neg_action_regrets" : [], "num_cards_seen_at_action" : [], "raise_rewards" : []}
         self.nn_vals = {"state_vecs" : [], "action_probs": [], "log_prob_action" : [], "critic_outputs" : [], "expected_fold_prob_zero" : []}
-        self.num_table_cards_since_cache = 0
+        self.num_table_cards_since_cache = -1
         self.cached_probs = [0 for i in range(self.num_players)]
 
     def set_max_bet(self, max_bet, pot):
@@ -454,8 +454,8 @@ class AutomatedPlayer(Player):
         now = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         policy_checkpoint_path = f"checkpoints/policy/policy_checkpoint_{self.name}_{now}_{self.num_updates}_{self.original_num_players}.pth"
         critic_checkpoint_path = f"checkpoints/critic/critic_checkpoint_{self.name}_{now}_{self.num_updates}_{self.original_num_players}.pth"
-        os.makedirs(os.path.dirname(policy_checkpoint_path), exist_ok=True)
-        os.makedirs(os.path.dirname(critic_checkpoint_path), exist_ok=True)
+        os.makedirs(os.path.dirname(policy_checkpoint_path), exist_ok = True)
+        os.makedirs(os.path.dirname(critic_checkpoint_path), exist_ok = True)
         torch.save(self.policy_nn.state_dict(), policy_checkpoint_path)
         torch.save(self.critic_nn.state_dict(), critic_checkpoint_path)
         return policy_checkpoint_path, critic_checkpoint_path
