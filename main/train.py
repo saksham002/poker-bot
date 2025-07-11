@@ -27,20 +27,22 @@ if __name__ == "__main__":
     log_file_path = f"train_out/{num_players}.txt"
 
     original_stdout = sys.stdout
-    for i in tqdm(range(num_games), desc = "Training Progress"):
+    try:
         with open(log_file_path, "w") as f:
             sys.stdout = f
-            print(f"----------------------------Game {i + 1}: Start----------------------------")
-            game = Game(num_players, buy_in, min_bet, False, True, load_checkpt_policy, load_checkpt_critic, True, lmbda, plotter)
-            game.game_num = i
-            ctr = 1
-            while game.num_players == num_players:
-                print(f"--------------Round {ctr}: Start--------------")
-                game.round()
-                print(f"--------------Round {ctr}: End--------------")
-                ctr += 1
-            load_checkpt_policy, load_checkpt_critic = game.end()
-            print(f"----------------------------Game {i + 1}: End----------------------------")
-            print(load_checkpt_critic, load_checkpt_policy)
-    sys.stdout = original_stdout
-    plotter.close()
+            for i in tqdm(range(num_games), desc = "Training Progress"):
+                print(f"----------------------------Game {i + 1}: Start----------------------------")
+                game = Game(num_players, buy_in, min_bet, False, True, load_checkpt_policy, load_checkpt_critic, True, lmbda, plotter)
+                game.game_num = i
+                ctr = 1
+                while game.num_players == num_players:
+                    print(f"--------------Round {ctr}: Start--------------")
+                    game.round()
+                    print(f"--------------Round {ctr}: End--------------")
+                    ctr += 1
+                load_checkpt_policy, load_checkpt_critic = game.end()
+                print(f"----------------------------Game {i + 1}: End----------------------------")
+                print(load_checkpt_critic, load_checkpt_policy, sep = " ")
+    finally:
+        sys.stdout = original_stdout
+        plotter.close()

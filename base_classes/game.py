@@ -217,9 +217,6 @@ class Game:
         for winner_index in winner_indices:
             self.players[winner_index].add_to_money(self.pot / num_winners)
         winner_names = [self.players[i].get_name() for i in winner_indices]
-        for player in self.players:
-            if isinstance(player, AutomatedPlayer):
-                player.plot_data_game['money'].append(player.get_money())
         self.round_end(winner_indices, winner_score)
         if num_winners == 1:
             print(", ".join(x for x in winner_names), "wins the pot.", sep = " ")

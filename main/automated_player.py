@@ -21,14 +21,18 @@ class PolicyNN(nn.Module):
         super().__init__()
         self.fc1 = nn.Linear(input_dim, hidden_dim)
         self.fc2 = nn.Linear(hidden_dim, hidden_dim)
-        self.fc3a = nn.Linear(hidden_dim, output_dim)
-        self.fc3b = nn.Linear(hidden_dim, 1)
+        self.fc3 = nn.Linear(hidden_dim, hidden_dim)
+        self.fc4 = nn.Linear(hidden_dim, hidden_dim)
+        self.fc5a = nn.Linear(hidden_dim, output_dim)
+        self.fc5b = nn.Linear(hidden_dim, 1)
 
     def forward(self, x):
         x = F.relu(self.fc1(x))
         x = F.relu(self.fc2(x))
-        action_probs = F.softmax(self.fc3a(x), dim = 1)
-        db_param = F.sigmoid(self.fc3b(x))
+        x = F.relu(self.fc3(x))
+        x = F.relu(self.fc4(x))
+        action_probs = F.softmax(self.fc5a(x), dim = 1)
+        db_param = F.sigmoid(self.fc5b(x))
         return action_probs, db_param
 
 class CriticNN(nn.Module):
@@ -36,12 +40,16 @@ class CriticNN(nn.Module):
         super().__init__()
         self.fc1 = nn.Linear(input_dim, hidden_dim)
         self.fc2 = nn.Linear(hidden_dim, hidden_dim)
-        self.fc3 = nn.Linear(hidden_dim, 1)
+        self.fc3 = nn.Linear(hidden_dim, hidden_dim)
+        self.fc4 = nn.Linear(hidden_dim, hidden_dim)
+        self.fc5 = nn.Linear(hidden_dim, 1)
 
     def forward(self, x):
         x = F.relu(self.fc1(x))
         x = F.relu(self.fc2(x))
         x = F.relu(self.fc3(x))
+        x = F.relu(self.fc4(x))
+        x = self.fc5(x)
         return x
 
 # for now, just decide whether to fold or call
@@ -61,10 +69,10 @@ class AutomatedPlayer(Player):
         self.num_players_round = num_players
         self.pot = 0
         self.max_bet_before_raise = 0
-        self.policy_nn = PolicyNN(3 * num_players, 8).to(device)
+        self.policy_nn = PolicyNN(3 * num_players, 32).to(device)
         if load_checkpt_policy != "":
             self.policy_nn.load_state_dict(torch.load(load_checkpt_policy, weights_only = True, map_location = device))
-        self.critic_nn = CriticNN(3 * num_players, 8).to(device)
+        self.critic_nn = CriticNN(3 * num_players, 32).to(device)
         if load_checkpt_critic != "":
             self.critic_nn.load_state_dict(torch.load(load_checkpt_critic, weights_only = True, map_location = device))
         self.train_network = train_network
@@ -74,9 +82,9 @@ class AutomatedPlayer(Player):
         else:
             self.policy_nn.eval()
             self.critic_nn.eval()
-        self.round_action_dict = {"self_round_bets" : [], "other_players_round_bets" : [], "other_players_money" : [], "has_folded" : [], "pots" : [], "neg_action_regrets": [], "num_cards_seen_at_action": [], "raise_rewards" : []}
-        self.nn_vals = {"state_vecs" : [], "action_probs": [], "log_prob_action" : [], "critic_outputs" : [], "expected_fold_prob_zero" : []}
-        self.plot_data_game = {'critic_losses': [], 'policy_losses': [], 'fold_losses': [], 'total_policy_losses': [], 'money': []}
+        self.round_action_dict = {"self_round_bets" : [], "other_players_round_bets" : [], "other_players_money" : [], "has_folded" : [], "pots" : [], "neg_action_regrets" : [], "num_cards_seen_at_action" : [], "raise_rewards" : []}
+        self.nn_vals = {"state_vecs" : [], "action_probs" : [], "log_prob_action" : [], "critic_outputs" : [], "expected_fold_prob_zero" : []}
+        self.plot_data_game = {"critic_losses" : [], "policy_losses" : [], "fold_losses" : [], "total_policy_losses" : [], "rewards" : []}
         self.num_table_cards_since_cache = 0
         self.cached_probs = [0 for i in range(self.num_players)]
         
@@ -413,10 +421,11 @@ class AutomatedPlayer(Player):
             suffix_rewards.append(sum(rewards[i : ]))
         critic_loss = F.mse_loss(torch.tensor(suffix_rewards, device = device, dtype = torch.float32), critic_values.squeeze(-1))
 
-        self.plot_data_game['critic_losses'].append(critic_loss.item())
-        self.plot_data_game['policy_losses'].append(policy_loss.item())
-        self.plot_data_game['fold_losses'].append(fold_loss.item())
-        self.plot_data_game['total_policy_losses'].append(total_policy_loss.item())
+        self.plot_data_game["critic_losses"].append(critic_loss.item())
+        self.plot_data_game["policy_losses"].append(policy_loss.item())
+        self.plot_data_game["fold_losses"].append(fold_loss.item())
+        self.plot_data_game["total_policy_losses"].append(total_policy_loss.item())
+        self.plot_data_game["rewards"].append(suffix_rewards[0])
 
         #debug_print(f"rewards: {rewards}")
         #debug_print(f"log_probs: {log_probs}")
