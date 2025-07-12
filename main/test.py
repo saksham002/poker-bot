@@ -11,7 +11,7 @@ if __name__ == "__main__":
         if not os.path.exists(load_checkpt_critic):
             load_checkpt_critic = ""
         if int(train_network) == 1:
-            lmbda = float(input("Enter values of hyper-parameter lambda to train the network: ")) 
+            lmbda = float(input("Enter value of hyper-parameter lambda to train the network: ")) 
     game = Game(num_players, buy_in, min_bet, play_with_bot, False, load_checkpt_policy, load_checkpt_critic, train_network, lmbda)
     ctr = 1
     while game.num_players > 1 and (not play_with_bot or game.num_players == num_players):

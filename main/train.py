@@ -19,7 +19,7 @@ if __name__ == "__main__":
         if os.path.exists(critic_paths[i]):
             load_checkpt_critic[i] = critic_paths[i]
     
-    lmbda = float(input("Enter values of hyper-parameter lambda to train the network: ")) 
+    lmbda = float(input("Enter value of hyper-parameter lambda to train the network: ")) 
 
     plotter = Plotter([f"P{i}" for i in range(num_players)])
 
@@ -32,7 +32,7 @@ if __name__ == "__main__":
             sys.stdout = f
             for i in tqdm(range(num_games), desc = "Training Progress"):
                 print(f"----------------------------Game {i + 1}: Start----------------------------")
-                game = Game(num_players, buy_in, min_bet, False, True, load_checkpt_policy, load_checkpt_critic, True, lmbda, plotter)
+                game = Game(num_players, buy_in, min_bet, False, True, load_checkpt_policy, load_checkpt_critic, True, lmbda, plotter, i % 2)
                 game.game_num = i
                 ctr = 1
                 while game.num_players == num_players:

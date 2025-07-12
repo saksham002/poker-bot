@@ -5,7 +5,7 @@ from main.automated_player import AutomatedPlayer
 
 class Game:
     # Constructor (initializes attributes)
-    def __init__(self, num_players, buy_in, min_bet, one_bot = False, all_bots = False, load_checkpt_policy = "", load_checkpt_critic = "", train_network = False, lmbda = 0.1, plotter = None):
+    def __init__(self, num_players, buy_in, min_bet, one_bot = False, all_bots = False, load_checkpt_policy = "", load_checkpt_critic = "", train_network = False, lmbda = 0.1, plotter = None, first = 0):
         self.plotter = plotter
         self.suits = ['h', 'd', 'c', 's']
         self.ranks = ['2', '3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K', 'A']
@@ -24,7 +24,8 @@ class Game:
                 self.players.append(Player(f"P{i}", buy_in, self.num_players, min_bet))
         elif self.all_bots:
             for i in range(num_players):
-                self.players.append(AutomatedPlayer(f"P{i}", buy_in, self.num_players, min_bet, load_checkpt_policy[i], load_checkpt_critic[i], train_network, lmbda))
+                ind = (first + i) % self.num_players
+                self.players.append(AutomatedPlayer(f"P{ind}", buy_in, self.num_players, min_bet, load_checkpt_policy[ind], load_checkpt_critic[ind], train_network, lmbda))
         else:
             for i in range(num_players):
                 self.players.append(Player(f"P{i}", buy_in, self.num_players, min_bet))
