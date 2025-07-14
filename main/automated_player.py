@@ -54,7 +54,7 @@ class CriticNN(nn.Module):
 
 # for now, just decide whether to fold or call
 class AutomatedPlayer(Player):
-    def __init__(self, name, buy_in, num_players, min_bet, load_checkpt_policy = "", load_checkpt_critic = "", train_network = False, lmbda = 0.1, num_updates = 0):
+    def __init__(self, name, buy_in, num_players, min_bet, load_checkpt_policy = "", load_checkpt_critic = "", train_network = False, lmbda = 0.1, player_data_entry = None):
         # to-do list
         # 1. assumes num_players does not change, fix this.
         # 2. approach is player-style agnostic and does not give the program an option to raise.
@@ -62,7 +62,12 @@ class AutomatedPlayer(Player):
 
         super().__init__(name, buy_in, num_players, min_bet)
         self.lmbda = lmbda
-        self.num_updates = num_updates
+        if player_data_entry:
+            initial_lr = player_data_entry[0]
+            self.num_updates = player_data_entry[1]
+        else:
+            initial_lr = 1e-3
+            self.num_updates = 0
         self.is_latest_action_raise = False
         self.table_cards_so_far = []
         self.original_num_players = num_players
@@ -77,8 +82,15 @@ class AutomatedPlayer(Player):
             self.critic_nn.load_state_dict(torch.load(load_checkpt_critic, weights_only = True, map_location = device))
         self.train_network = train_network
         if self.train_network:
-            self.policy_optimizer = torch.optim.Adam(self.policy_nn.parameters(), lr = 1e-3, weight_decay = 1e-4)
-            self.critic_optimizer = torch.optim.Adam(self.critic_nn.parameters(), lr = 1e-3, weight_decay = 1e-4)
+            self.policy_optimizer = torch.optim.Adam(self.policy_nn.parameters(), lr = initial_lr, weight_decay = 1e-4)
+            self.critic_optimizer = torch.optim.Adam(self.critic_nn.parameters(), lr = initial_lr, weight_decay = 1e-4)
+
+            # Explicitly set 'initial_lr' for the schedulers
+            for param_group in self.policy_optimizer.param_groups:
+                param_group.setdefault('initial_lr', param_group['lr'])
+            for param_group in self.critic_optimizer.param_groups:
+                param_group.setdefault('initial_lr', param_group['lr'])
+
             self.policy_scheduler = torch.optim.lr_scheduler.StepLR(self.policy_optimizer, step_size = 1000, gamma = 0.5, last_epoch = self.num_updates - 1)
             self.critic_scheduler = torch.optim.lr_scheduler.StepLR(self.critic_optimizer, step_size = 1000, gamma = 0.5, last_epoch = self.num_updates - 1)
             self.policy_nn.train()
@@ -500,4 +512,4 @@ class AutomatedPlayer(Player):
         os.makedirs(os.path.dirname(critic_checkpoint_path), exist_ok = True)
         torch.save(self.policy_nn.state_dict(), policy_checkpoint_path)
         torch.save(self.critic_nn.state_dict(), critic_checkpoint_path)
-        return policy_checkpoint_path, critic_checkpoint_path
+        return policy_checkpoint_path, critic_checkpoint_path, self.policy_optimizer.param_groups[0]['lr'], self.num_updates
