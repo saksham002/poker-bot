@@ -22,6 +22,7 @@ if __name__ == "__main__":
     lmbda = float(input("Enter value of hyper-parameter lambda to train the network: ")) 
 
     plotter = Plotter([f"P{i}" for i in range(num_players)])
+    num_updates = [0] * num_players
 
     os.makedirs(f"train_out", exist_ok = True)
     log_file_path = f"train_out/{num_players}.txt"
@@ -32,7 +33,7 @@ if __name__ == "__main__":
             sys.stdout = f
             for i in tqdm(range(num_games), desc = "Training Progress"):
                 print(f"----------------------------Game {i + 1}: Start----------------------------")
-                game = Game(num_players, buy_in, min_bet, False, True, load_checkpt_policy, load_checkpt_critic, True, lmbda, plotter, i % 2)
+                game = Game(num_players, buy_in, min_bet, False, True, load_checkpt_policy, load_checkpt_critic, True, lmbda, plotter, i % 2, num_updates)
                 game.game_num = i
                 ctr = 1
                 while game.num_players == num_players:
@@ -40,7 +41,7 @@ if __name__ == "__main__":
                     game.round()
                     print(f"--------------Round {ctr}: End--------------")
                     ctr += 1
-                load_checkpt_policy, load_checkpt_critic = game.end()
+                load_checkpt_policy, load_checkpt_critic, num_updates = game.end()
                 print(f"----------------------------Game {i + 1}: End----------------------------")
                 print(load_checkpt_policy, load_checkpt_critic, sep = " ")
     finally:

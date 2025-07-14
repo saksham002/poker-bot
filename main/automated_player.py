@@ -54,7 +54,7 @@ class CriticNN(nn.Module):
 
 # for now, just decide whether to fold or call
 class AutomatedPlayer(Player):
-    def __init__(self, name, buy_in, num_players, min_bet, load_checkpt_policy = "", load_checkpt_critic = "", train_network = False, lmbda = 0.1):
+    def __init__(self, name, buy_in, num_players, min_bet, load_checkpt_policy = "", load_checkpt_critic = "", train_network = False, lmbda = 0.1, num_updates = 0):
         # to-do list
         # 1. assumes num_players does not change, fix this.
         # 2. approach is player-style agnostic and does not give the program an option to raise.
@@ -62,31 +62,56 @@ class AutomatedPlayer(Player):
 
         super().__init__(name, buy_in, num_players, min_bet)
         self.lmbda = lmbda
-        self.num_updates = 0
+        self.num_updates = num_updates
         self.is_latest_action_raise = False
         self.table_cards_so_far = []
         self.original_num_players = num_players
         self.num_players_round = num_players
         self.pot = 0
         self.max_bet_before_raise = 0
-        self.policy_nn = PolicyNN(3 * num_players, 32).to(device)
+        self.policy_nn = PolicyNN(12 * num_players, 32).to(device)
         if load_checkpt_policy != "":
             self.policy_nn.load_state_dict(torch.load(load_checkpt_policy, weights_only = True, map_location = device))
-        self.critic_nn = CriticNN(3 * num_players, 32).to(device)
+        self.critic_nn = CriticNN(12 * num_players, 32).to(device)
         if load_checkpt_critic != "":
             self.critic_nn.load_state_dict(torch.load(load_checkpt_critic, weights_only = True, map_location = device))
         self.train_network = train_network
         if self.train_network:
-            self.policy_optimizer = torch.optim.Adam(self.policy_nn.parameters(), lr = 1e-3)
-            self.critic_optimizer = torch.optim.Adam(self.critic_nn.parameters(), lr = 1e-3)
+            self.policy_optimizer = torch.optim.Adam(self.policy_nn.parameters(), lr = 1e-3, weight_decay = 1e-4)
+            self.critic_optimizer = torch.optim.Adam(self.critic_nn.parameters(), lr = 1e-3, weight_decay = 1e-4)
+            self.policy_scheduler = torch.optim.lr_scheduler.StepLR(self.policy_optimizer, step_size = 1000, gamma = 0.5, last_epoch = self.num_updates - 1)
+            self.critic_scheduler = torch.optim.lr_scheduler.StepLR(self.critic_optimizer, step_size = 1000, gamma = 0.5, last_epoch = self.num_updates - 1)
+            self.policy_nn.train()
+            self.critic_nn.train()
         else:
             self.policy_nn.eval()
             self.critic_nn.eval()
-        self.round_action_dict = {"self_round_bets" : [], "other_players_round_bets" : [], "other_players_money" : [], "has_folded" : [], "pots" : [], "neg_action_regrets" : [], "num_cards_seen_at_action" : [], "raise_rewards" : []}
+        self.round_action_dict = {"self_round_bets" : [], "other_players_round_bets" : [], "other_players_money" : [], "has_folded" : [], "pots" : [], "neg_action_regrets" : [], "num_cards_seen_at_action" : [], "other_players_board_card_encodings": [], "raise_rewards" : []}
         self.nn_vals = {"state_vecs" : [], "action_probs" : [], "log_prob_action" : [], "critic_outputs" : [], "expected_fold_prob_zero" : []}
         self.plot_data_game = {"critic_losses" : [], "policy_losses" : [], "fold_losses" : [], "total_policy_losses" : [], "rewards" : []}
         self.num_table_cards_since_cache = -1
         self.cached_probs = [0 for i in range(self.num_players)]
+
+    def _encode_cards(self, cards):
+        """
+        Encodes a list of up to 5 card strings into a normalized vector.
+        - Suit: h,d,c,s -> 0,1,2,3 (normalized by /3)
+        - Rank: 2-A -> 0-12 (normalized by /12)
+        - Unrevealed cards are represented by -1.
+        """
+        suit_map = {'h': 0, 'd': 1, 'c': 2, 's': 3}
+        rank_map = {'2': 0, '3': 1, '4': 2, '5': 3, '6': 4, '7': 5, '8': 6, '9': 7, 'T': 8, 'J': 9, 'Q': 10, 'K': 11, 'A': 12}
+        
+        encoded_vector = []
+        for i in range(5):
+            if i < len(cards):
+                card = cards[i]
+                rank = rank_map[card[0]] / 12.0
+                suit = suit_map[card[1]] / 3.0
+                encoded_vector.extend([rank, suit])
+            else:
+                encoded_vector.extend([-1, -1])
+        return encoded_vector
         
     def update_num_players(self, new_val):
         self.num_players = new_val
@@ -104,7 +129,7 @@ class AutomatedPlayer(Player):
         self.table_cards_so_far = []
         self.num_players_round = self.num_players
         self.pot = 0
-        self.round_action_dict = {"self_round_bets" : [], "other_players_round_bets" : [], "other_players_money" : [], "has_folded" : [], "pots" : [], "neg_action_regrets" : [], "num_cards_seen_at_action" : [], "raise_rewards" : []}
+        self.round_action_dict = {"self_round_bets" : [], "other_players_round_bets" : [], "other_players_money" : [], "has_folded" : [], "pots" : [], "neg_action_regrets" : [], "num_cards_seen_at_action" : [], "other_players_board_card_encodings": [], "raise_rewards" : []}
         self.nn_vals = {"state_vecs" : [], "action_probs": [], "log_prob_action" : [], "critic_outputs" : [], "expected_fold_prob_zero" : []}
         self.num_table_cards_since_cache = -1
         self.cached_probs = [0 for i in range(self.num_players)]
@@ -122,10 +147,12 @@ class AutomatedPlayer(Player):
             self.round_action_dict["other_players_money"].append([])
             self.round_action_dict["has_folded"].append([])
             self.round_action_dict["num_cards_seen_at_action"].append([])
+            self.round_action_dict["other_players_board_card_encodings"].append([])
         self.round_action_dict["other_players_round_bets"][-1].append(round_bet)
         self.round_action_dict["other_players_money"][-1].append(money + round_bet)
         self.round_action_dict["has_folded"][-1].append(folded)
         self.round_action_dict["num_cards_seen_at_action"][-1].append(num_cards_seen)
+        self.round_action_dict["other_players_board_card_encodings"][-1].append(self._encode_cards(self.table_cards_so_far))
         if len(self.round_action_dict["raise_rewards"]) > 0:
             self.round_action_dict["raise_rewards"][-1] += add_to_raise_reward
 
@@ -264,32 +291,37 @@ class AutomatedPlayer(Player):
         # raise encodings for when not all ([0, k - 2]) other players have reacted to the latest information?
 
         k = self.num_players - 1 # same as defined in Line 238.
-        rbs, tots, folds, cards_seen = [0 for i in range(k)], [1 for i in range(k)], [False for i in range(k)], [0 for i in range(k)]
+        rbs, tots, folds, board_encodings = [0] * k, [1] * k, [False] * k, [[-1] * 10] * k
         if len(self.round_action_dict["other_players_round_bets"]) > 0:
-            rbs, tots, folds, cards_seen = self.round_action_dict["other_players_round_bets"][-1], self.round_action_dict["other_players_money"][-1], self.round_action_dict["has_folded"][-1], self.round_action_dict["num_cards_seen_at_action"][-1]
+            rbs, tots, folds, board_encodings = self.round_action_dict["other_players_round_bets"][-1], self.round_action_dict["other_players_money"][-1], self.round_action_dict["has_folded"][-1], self.round_action_dict["other_players_board_card_encodings"][-1]
         
         other_player_info = []
         k = len(rbs)
 
         for i in range(k):
+            other_player_info.extend(board_encodings[i])
             if folds[i]:
                 other_player_info.append(-1)
             elif rbs[i] == tots[i]:
                 other_player_info.append(1)
             else:
                 other_player_info.append(rbs[i] / tots[i])
-            other_player_info.append(cards_seen[i] / 5)
         
         orig_probs = torch.tensor((self.mc_split_distribution(self.table_cards_so_far, self.num_players) if num_cards_shown > self.num_table_cards_since_cache \
                                                                                                          else self.cached_probs), device = device).unsqueeze(0)
-        state_vec = torch.cat((torch.tensor([num_cards_shown / 5, self.min_bet / self.money], device = device).unsqueeze(0), orig_probs, torch.tensor(other_player_info, device = device).unsqueeze(0)), dim = 1).to(dtype = torch.float32) 
+        encoded_board_cards = self._encode_cards(self.table_cards_so_far)
+        state_vec = torch.cat((torch.tensor(encoded_board_cards, device = device).unsqueeze(0), torch.tensor([self.min_bet / self.money], device = device).unsqueeze(0), orig_probs, torch.tensor(other_player_info, device = device).unsqueeze(0)), dim = 1).to(dtype = torch.float32) 
 
         #debug_print(f"state_vec: {state_vec}")
         self.nn_vals["state_vecs"].append(state_vec)
 
         # The policy network now outputs probabilities for fold, call, and raise,
         # and a parameter for the raise amount distribution.
-        action_probs, db_param = self.policy_nn(state_vec)
+        if not self.train_network:
+            with torch.no_grad():
+                action_probs, db_param = self.policy_nn(state_vec)
+        else:
+            action_probs, db_param = self.policy_nn(state_vec)
 
         #debug_print(f"db_param: {db_param}")
 
@@ -366,7 +398,11 @@ class AutomatedPlayer(Player):
         self.round_action_dict["pots"].append(self.pot + self.round_bet - old_round_bet)
         self.round_action_dict["raise_rewards"].append(0)
 
-        V_t = self.critic_nn(state_vec)
+        if not self.train_network:
+            with torch.no_grad():
+                V_t = self.critic_nn(state_vec)
+        else:
+            V_t = self.critic_nn(state_vec)
         self.nn_vals["critic_outputs"].append(V_t)
 
         add_to_pot = self.round_bet - old_round_bet
@@ -440,17 +476,23 @@ class AutomatedPlayer(Player):
         # Backpropagation
         self.policy_optimizer.zero_grad()
         total_policy_loss.backward()
+        torch.nn.utils.clip_grad_norm_(self.policy_nn.parameters(), max_norm = 0.5)
         self.policy_optimizer.step()
+        self.policy_scheduler.step()
 
         self.critic_optimizer.zero_grad()
         critic_loss.backward()
+        torch.nn.utils.clip_grad_norm_(self.critic_nn.parameters(), max_norm = 0.5)
         self.critic_optimizer.step()
+        self.critic_scheduler.step()
 
         self.num_updates += 1
         if self.num_updates % 50 == 0:
             self.save_model()
 
     def save_model(self):
+        if not self.train_network:
+            return
         now = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         policy_checkpoint_path = f"checkpoints/policy/policy_checkpoint_{self.name}_{now}_{self.num_updates}_{self.original_num_players}.pth"
         critic_checkpoint_path = f"checkpoints/critic/critic_checkpoint_{self.name}_{now}_{self.num_updates}_{self.original_num_players}.pth"

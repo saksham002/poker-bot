@@ -5,7 +5,7 @@ from main.automated_player import AutomatedPlayer
 
 class Game:
     # Constructor (initializes attributes)
-    def __init__(self, num_players, buy_in, min_bet, one_bot = False, all_bots = False, load_checkpt_policy = "", load_checkpt_critic = "", train_network = False, lmbda = 0.1, plotter = None, first = 0):
+    def __init__(self, num_players, buy_in, min_bet, one_bot = False, all_bots = False, load_checkpt_policy = "", load_checkpt_critic = "", train_network = False, lmbda = 0.1, plotter = None, first = 0, num_updates = None):
         self.plotter = plotter
         self.suits = ['h', 'd', 'c', 's']
         self.ranks = ['2', '3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K', 'A']
@@ -19,13 +19,13 @@ class Game:
         self.all_bots = all_bots
         self.min_bet = min_bet
         if self.one_bot:
-            self.players.append(AutomatedPlayer("P0", buy_in, self.num_players, min_bet, load_checkpt_policy, load_checkpt_critic, train_network, lmbda))
+            self.players.append(AutomatedPlayer("P0", buy_in, self.num_players, min_bet, load_checkpt_policy, load_checkpt_critic, train_network, lmbda, num_updates[0] if num_updates else 0))
             for i in range(1, num_players):
                 self.players.append(Player(f"P{i}", buy_in, self.num_players, min_bet))
         elif self.all_bots:
             for i in range(num_players):
                 ind = (first + i) % self.num_players
-                self.players.append(AutomatedPlayer(f"P{ind}", buy_in, self.num_players, min_bet, load_checkpt_policy[ind], load_checkpt_critic[ind], train_network, lmbda))
+                self.players.append(AutomatedPlayer(f"P{ind}", buy_in, self.num_players, min_bet, load_checkpt_policy[ind], load_checkpt_critic[ind], train_network, lmbda, num_updates[ind] if num_updates else 0))
         else:
             for i in range(num_players):
                 self.players.append(Player(f"P{i}", buy_in, self.num_players, min_bet))
@@ -226,19 +226,28 @@ class Game:
             print(", ".join(x for x in winner_names), "wins the pot.", sep = " ")
         else:
             print(", ".join(x for x in winner_names), "split the pot.", sep = " ")
+    
+    def get_winner(self):
+        max_money = 0
+        winner = None
+        for i in range(self.num_players):
+            if self.players[i].get_money() > max_money:
+                max_money, winner = self.players[i].get_money(), self.players[i].get_name()
+        return winner
 
     def end(self):
         all_automated_players = self.removed_automated_players + [p for p in self.players if isinstance(p, AutomatedPlayer)]
         all_automated_players.sort(key = lambda x: int(x.get_name()[1 : ]))
         
-        policy_checkpoint_paths, critic_checkpoint_paths = [], []
+        policy_checkpoint_paths, critic_checkpoint_paths, num_updates = [], [], []
         for player in all_automated_players:
             policy_checkpoint_path, critic_checkpoint_path = player.save_model()
             policy_checkpoint_paths.append(policy_checkpoint_path)
             critic_checkpoint_paths.append(critic_checkpoint_path)
+            num_updates.append(player.num_updates)
 
         if self.plotter:
             plot_data = [player.plot_data_game for player in all_automated_players]
             self.plotter.log_data(plot_data)
 
-        return policy_checkpoint_paths, critic_checkpoint_paths
+        return policy_checkpoint_paths, critic_checkpoint_paths, num_updates
