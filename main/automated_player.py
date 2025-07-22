@@ -74,10 +74,10 @@ class AutomatedPlayer(Player):
         self.num_players_round = num_players
         self.pot = 0
         self.max_bet_before_raise = 0
-        self.policy_nn = PolicyNN(12 * num_players, 32).to(device)
+        self.policy_nn = PolicyNN(4 + 11 * num_players, 32).to(device)
         if load_checkpt_policy != "":
             self.policy_nn.load_state_dict(torch.load(load_checkpt_policy, weights_only = True, map_location = device))
-        self.critic_nn = CriticNN(12 * num_players, 32).to(device)
+        self.critic_nn = CriticNN(4 + 11 * num_players, 32).to(device)
         if load_checkpt_critic != "":
             self.critic_nn.load_state_dict(torch.load(load_checkpt_critic, weights_only = True, map_location = device))
         self.train_network = train_network
@@ -104,7 +104,7 @@ class AutomatedPlayer(Player):
         self.num_table_cards_since_cache = -1
         self.cached_probs = [0 for i in range(self.num_players)]
 
-    def _encode_cards(self, cards):
+    def _encode_cards(self, cards, fill = True):
         """
         Encodes a list of up to 5 card strings into a normalized vector.
         - Suit: h,d,c,s -> 0,1,2,3 (normalized by /3)
@@ -122,7 +122,10 @@ class AutomatedPlayer(Player):
                 suit = suit_map[card[1]] / 3.0
                 encoded_vector.extend([rank, suit])
             else:
-                encoded_vector.extend([-1, -1])
+                if fill:
+                    encoded_vector.extend([-1, -1])
+                else:
+                    break
         return encoded_vector
         
     def update_num_players(self, new_val):
@@ -319,10 +322,9 @@ class AutomatedPlayer(Player):
             else:
                 other_player_info.append(rbs[i] / tots[i])
         
-        orig_probs = torch.tensor((self.mc_split_distribution(self.table_cards_so_far, self.num_players) if num_cards_shown > self.num_table_cards_since_cache \
-                                                                                                         else self.cached_probs), device = device).unsqueeze(0)
+        encoded_hand_cards = self._encode_cards(self._hand, False)
         encoded_board_cards = self._encode_cards(self.table_cards_so_far)
-        state_vec = torch.cat((torch.tensor(encoded_board_cards, device = device).unsqueeze(0), torch.tensor([self.min_bet / self.money], device = device).unsqueeze(0), orig_probs, torch.tensor(other_player_info, device = device).unsqueeze(0)), dim = 1).to(dtype = torch.float32) 
+        state_vec = torch.cat((torch.tensor(encoded_hand_cards, device = device).unsqueeze(0), torch.tensor(encoded_board_cards, device = device).unsqueeze(0), torch.tensor([self.min_bet / self.money], device = device).unsqueeze(0), torch.tensor(other_player_info, device = device).unsqueeze(0)), dim = 1).to(dtype = torch.float32) 
 
         #debug_print(f"state_vec: {state_vec}")
         self.nn_vals["state_vecs"].append(state_vec)
