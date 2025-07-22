@@ -74,10 +74,10 @@ class AutomatedPlayer(Player):
         self.num_players_round = num_players
         self.pot = 0
         self.max_bet_before_raise = 0
-        self.policy_nn = PolicyNN(4 + 11 * num_players, 32).to(device)
+        self.policy_nn = PolicyNN(3 + 12 * num_players, 32).to(device)
         if load_checkpt_policy != "":
             self.policy_nn.load_state_dict(torch.load(load_checkpt_policy, weights_only = True, map_location = device))
-        self.critic_nn = CriticNN(4 + 11 * num_players, 32).to(device)
+        self.critic_nn = CriticNN(3 + 12 * num_players, 32).to(device)
         if load_checkpt_critic != "":
             self.critic_nn.load_state_dict(torch.load(load_checkpt_critic, weights_only = True, map_location = device))
         self.train_network = train_network
@@ -98,9 +98,9 @@ class AutomatedPlayer(Player):
         else:
             self.policy_nn.eval()
             self.critic_nn.eval()
-        self.round_action_dict = {"self_round_bets" : [], "other_players_round_bets" : [], "other_players_money" : [], "has_folded" : [], "pots" : [], "neg_action_regrets" : [], "num_cards_seen_at_action" : [], "other_players_board_card_encodings": [], "raise_rewards" : []}
+        self.round_action_dict = {"self_round_bets" : [], "other_players_round_bets" : [], "other_players_total_round_bets" : [], "other_players_money" : [], "has_folded" : [], "pots" : [], "neg_action_regrets" : [], "num_cards_seen_at_action" : [], "other_players_board_card_encodings": [], "raise_rewards" : []}
         self.nn_vals = {"state_vecs" : [], "action_probs" : [], "log_prob_action" : [], "critic_outputs" : [], "expected_fold_prob_zero" : []}
-        self.plot_data_game = {"critic_losses" : [], "policy_losses" : [], "fold_losses" : [], "total_policy_losses" : [], "rewards" : []}
+        self.plot_data_game = {"critic_losses" : [], "policy_losses" : [], "fold_losses" : [], "total_policy_losses" : [], "rewards" : [], "money_values": [], "policy_grad_norms": [], "critic_grad_norms": []}
         self.num_table_cards_since_cache = -1
         self.cached_probs = [0 for i in range(self.num_players)]
 
@@ -145,6 +145,7 @@ class AutomatedPlayer(Player):
         self.num_players_round = self.num_players
         self.pot = 0
         self.round_action_dict = {"self_round_bets" : [], "other_players_round_bets" : [], "other_players_money" : [], "has_folded" : [], "pots" : [], "neg_action_regrets" : [], "num_cards_seen_at_action" : [], "other_players_board_card_encodings": [], "raise_rewards" : []}
+        self.round_action_dict = {"self_round_bets" : [], "other_players_round_bets" : [], "other_players_total_round_bets" : [], "other_players_money" : [], "has_folded" : [], "pots" : [], "neg_action_regrets" : [], "num_cards_seen_at_action" : [], "other_players_board_card_encodings": [], "raise_rewards" : []}
         self.nn_vals = {"state_vecs" : [], "action_probs": [], "log_prob_action" : [], "critic_outputs" : [], "expected_fold_prob_zero" : []}
         self.num_table_cards_since_cache = -1
         self.cached_probs = [0 for i in range(self.num_players)]
@@ -156,14 +157,16 @@ class AutomatedPlayer(Player):
     def update_table_cards(self, new_val):
         self.table_cards_so_far = new_val
 
-    def update_action_dict(self, round_bet, money, folded, num_cards_seen, add_to_raise_reward = 0):
+    def update_action_dict(self, round_bet, total_round_bet, money, folded, num_cards_seen, add_to_raise_reward = 0):
         if len(self.round_action_dict["other_players_round_bets"]) == 0 or len(self.round_action_dict["other_players_round_bets"][-1]) == self.num_players - 1:
             self.round_action_dict["other_players_round_bets"].append([])
+            self.round_action_dict["other_players_total_round_bets"].append([])
             self.round_action_dict["other_players_money"].append([])
             self.round_action_dict["has_folded"].append([])
             self.round_action_dict["num_cards_seen_at_action"].append([])
             self.round_action_dict["other_players_board_card_encodings"].append([])
         self.round_action_dict["other_players_round_bets"][-1].append(round_bet)
+        self.round_action_dict["other_players_total_round_bets"][-1].append(total_round_bet)
         self.round_action_dict["other_players_money"][-1].append(money + round_bet)
         self.round_action_dict["has_folded"][-1].append(folded)
         self.round_action_dict["num_cards_seen_at_action"][-1].append(num_cards_seen)
@@ -306,9 +309,9 @@ class AutomatedPlayer(Player):
         # raise encodings for when not all ([0, k - 2]) other players have reacted to the latest information?
 
         k = self.num_players - 1 # same as defined in Line 238.
-        rbs, tots, folds, board_encodings = [0] * k, [1] * k, [False] * k, [[-1] * 10] * k
+        rbs, tot_rbs, money_amts, folds, board_encodings = [0] * k, [0] * k, [1] * k, [False] * k, [[-1] * 10] * k
         if len(self.round_action_dict["other_players_round_bets"]) > 0:
-            rbs, tots, folds, board_encodings = self.round_action_dict["other_players_round_bets"][-1], self.round_action_dict["other_players_money"][-1], self.round_action_dict["has_folded"][-1], self.round_action_dict["other_players_board_card_encodings"][-1]
+            rbs, tot_rbs, money_amts, folds, board_encodings = self.round_action_dict["other_players_round_bets"][-1], self.round_action_dict["other_players_total_round_bets"][-1], self.round_action_dict["other_players_money"][-1], self.round_action_dict["has_folded"][-1], self.round_action_dict["other_players_board_card_encodings"][-1]
         
         other_player_info = []
         k = len(rbs)
@@ -317,14 +320,15 @@ class AutomatedPlayer(Player):
             other_player_info.extend(board_encodings[i])
             if folds[i]:
                 other_player_info.append(-1)
-            elif rbs[i] == tots[i]:
-                other_player_info.append(1)
+#            elif rbs[i] == money_amts[i]:
+#                other_player_info.append(1)
             else:
-                other_player_info.append(rbs[i] / tots[i])
+                other_player_info.append(rbs[i] / self.buy_in)
+            other_player_info.append(tot_rbs[i] / self.buy_in)
         
         encoded_hand_cards = self._encode_cards(self._hand, False)
         encoded_board_cards = self._encode_cards(self.table_cards_so_far)
-        state_vec = torch.cat((torch.tensor(encoded_hand_cards, device = device).unsqueeze(0), torch.tensor(encoded_board_cards, device = device).unsqueeze(0), torch.tensor([self.min_bet / self.money], device = device).unsqueeze(0), torch.tensor(other_player_info, device = device).unsqueeze(0)), dim = 1).to(dtype = torch.float32) 
+        state_vec = torch.cat((torch.tensor(encoded_hand_cards, device = device).unsqueeze(0), torch.tensor(encoded_board_cards, device = device).unsqueeze(0), torch.tensor([self.money / self.buy_in], device = device).unsqueeze(0), torch.tensor(other_player_info, device = device).unsqueeze(0)), dim = 1).to(dtype = torch.float32) 
 
         #debug_print(f"state_vec: {state_vec}")
         self.nn_vals["state_vecs"].append(state_vec)
@@ -476,6 +480,7 @@ class AutomatedPlayer(Player):
         self.plot_data_game["fold_losses"].append(fold_loss.item())
         self.plot_data_game["total_policy_losses"].append(total_policy_loss.item())
         self.plot_data_game["rewards"].append(suffix_rewards[0])
+        self.plot_data_game["money_values"].append(self.money)
 
         #debug_print(f"rewards: {rewards}")
         #debug_print(f"log_probs: {log_probs}")
@@ -490,15 +495,18 @@ class AutomatedPlayer(Player):
         # Backpropagation
         self.policy_optimizer.zero_grad()
         total_policy_loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.policy_nn.parameters(), max_norm = 0.5)
+        policy_grad_norm = torch.nn.utils.clip_grad_norm_(self.policy_nn.parameters(), max_norm = 0.5)
         self.policy_optimizer.step()
         self.policy_scheduler.step()
 
         self.critic_optimizer.zero_grad()
         critic_loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.critic_nn.parameters(), max_norm = 0.5)
+        critic_grad_norm = torch.nn.utils.clip_grad_norm_(self.critic_nn.parameters(), max_norm = 0.5)
         self.critic_optimizer.step()
         self.critic_scheduler.step()
+
+        self.plot_data_game["policy_grad_norms"].append(policy_grad_norm.item())
+        self.plot_data_game["critic_grad_norms"].append(critic_grad_norm.item())
 
         self.num_updates += 1
         if self.num_updates % 50 == 0:

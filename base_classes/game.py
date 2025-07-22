@@ -89,6 +89,7 @@ class Game:
                     players_since_no_raise = 1
                 else:
                     players_since_no_raise += 1
+                rb_minus_blind = self.players[i].round_bet - self.players[i].is_small_blind * self.min_bet - 2 * self.players[i].is_big_blind * self.min_bet
                 for j in range(self.num_players):
                     self.players[j].set_max_bet(self.max_bet, self.pot)
                     if isinstance(self.players[j], AutomatedPlayer):
@@ -97,9 +98,9 @@ class Game:
                         if i != j:
                             if self.players[i].is_active() and self.players[j].is_latest_action_raise:
                                 x = min(old_money, self.players[j].round_bet - old_round_bet) - min(old_money, self.players[j].max_bet_before_raise - old_round_bet)
-                                self.players[j].update_action_dict(add_to_pot, self.players[i].money, not self.players[i].is_active(), self.cards_shown, x)
+                                self.players[j].update_action_dict(add_to_pot, rb_minus_blind, self.players[i].money, not self.players[i].is_active(), self.cards_shown, x)
                             else:
-                                self.players[j].update_action_dict(add_to_pot, self.players[i].money, not self.players[i].is_active(), self.cards_shown)
+                                self.players[j].update_action_dict(add_to_pot, rb_minus_blind, self.players[i].money, not self.players[i].is_active(), self.cards_shown)
                 if not self.players[i].is_active():
                     self.num_active -= 1
                     self.active_indices.remove(i)
@@ -107,9 +108,10 @@ class Game:
                     break
             else:
                 players_since_no_raise += 1
+                rb_minus_blind = self.players[i].round_bet - self.players[i].is_small_blind * self.min_bet - 2 * self.players[i].is_big_blind * self.min_bet
                 for j in range(self.num_players):
                     if isinstance(self.players[j], AutomatedPlayer) and i != j:
-                        self.players[j].update_action_dict(0, self.players[i].money, True, self.cards_shown)
+                        self.players[j].update_action_dict(0, rb_minus_blind, self.players[i].money, True, self.cards_shown)
             i += 1
             i = i % self.num_players
         print(f"Current Pot: {self.pot}")

@@ -10,6 +10,9 @@ class Player:
         self.round_bet = 0
         self.max_bet = 0
         self.min_bet = min_bet
+        self.buy_in = buy_in
+        self.is_small_blind = False
+        self.is_big_blind = False
 
     def update_num_players(self, new_val):
         self.num_players = new_val
@@ -19,7 +22,9 @@ class Player:
         self.active = True
         self.round_bet = 0
         self.max_bet = 0
-    
+        self.is_small_blind = False
+        self.is_big_blind = False
+
     def set_hand(self, cards):
         self._hand = cards
     
@@ -45,12 +50,14 @@ class Player:
         self.money -= self.min_bet
         self.round_bet += self.min_bet
         self.max_bet = self.min_bet
+        self.is_small_blind = True
         return self.min_bet, self.max_bet
 
     def big_blind(self):
         self.money -= 2 * self.min_bet
         self.round_bet += 2 * self.min_bet
         self.max_bet = 2 * self.min_bet
+        self.is_big_blind = True
         return 2 * self.min_bet, self.max_bet
 
     def check(self):
