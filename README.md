@@ -22,4 +22,4 @@ export PYTHONPATH=$(pwd)
 
 ## Training Observation
 
-An important observation from training the model is that flipping the small blind player for the first round of every game results in a much better and more generalizable solution. This is implemented in `main/train.py`.
+An important observation from training the model is that flipping the small blind player for the first round of every game results in a better solution. This is implemented in `main/train.py`.
