@@ -19,7 +19,3 @@ Before running the project, you need to set the `PYTHONPATH` to the project's ro
 ```bash
 export PYTHONPATH=$(pwd)
 ```
-
-## Training Observation
-
-An important observation from training the model is that flipping the small blind player for the first round of every game results in a better solution. This is implemented in `main/train.py`.
