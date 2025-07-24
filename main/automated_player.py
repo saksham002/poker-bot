@@ -474,7 +474,7 @@ class AutomatedPlayer(Player):
         if is_terminal:
             # Calculate advantages for terminal state
             with torch.no_grad():
-                critic_values_next = torch.cat([critic_values_next, tensor([[0.0]], device = device)], dim = 0).detach()
+                critic_values_next = torch.cat([critic_values[1 : ], torch.tensor([[0.0]], device = device)], dim = 0).detach()
                 advantages = rewards + self.gamma * critic_values_next - critic_values
 
             # Policy loss includes the last action
