@@ -92,8 +92,8 @@ class AutomatedPlayer(Player):
             for param_group in self.critic_optimizer.param_groups:
                 param_group.setdefault('initial_lr', param_group['lr'])
 
-            self.policy_scheduler = torch.optim.lr_scheduler.StepLR(self.policy_optimizer, step_size = 1000, gamma = 0.5, last_epoch = self.num_updates - 1)
-            self.critic_scheduler = torch.optim.lr_scheduler.StepLR(self.critic_optimizer, step_size = 1000, gamma = 0.5, last_epoch = self.num_updates - 1)
+            self.policy_scheduler = torch.optim.lr_scheduler.StepLR(self.policy_optimizer, step_size = 10000, gamma = 0.5, last_epoch = self.num_updates - 1)
+            self.critic_scheduler = torch.optim.lr_scheduler.StepLR(self.critic_optimizer, step_size = 10000, gamma = 0.5, last_epoch = self.num_updates - 1)
             self.policy_nn.train()
             self.critic_nn.train()
         else:
