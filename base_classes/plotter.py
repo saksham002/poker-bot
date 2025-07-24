@@ -10,10 +10,7 @@ class Plotter:
     def log_data(self, plot_data):
         for i, player_name in enumerate(self.player_names):
             player_plot_data = plot_data[i]
-            for critic_loss, policy_loss, fold_loss, total_policy_loss, reward, money_value, policy_grad_norm, critic_grad_norm in zip(player_plot_data["critic_losses"], player_plot_data["policy_losses"], \
-                                                                                            player_plot_data["fold_losses"], player_plot_data["total_policy_losses"], \
-                                                                                            player_plot_data["rewards"], player_plot_data["money_values"], \
-                                                                                            player_plot_data["policy_grad_norms"], player_plot_data["critic_grad_norms"]):
+            for critic_loss, policy_loss, fold_loss, total_policy_loss, reward, money_value, policy_grad_norm, critic_grad_norm, batch_size in zip(player_plot_data["critic_losses"], player_plot_data["policy_losses"],                                                                                             player_plot_data["fold_losses"], player_plot_data["total_policy_losses"],                                                                                             player_plot_data["rewards"], player_plot_data["money_values"],                                                                                             player_plot_data["policy_grad_norms"], player_plot_data["critic_grad_norms"], player_plot_data["batch_sizes"]):
                 self.writer.add_scalar(f'{self.num_players}/{player_name}/Critic_Loss', critic_loss, self.iter_counts[player_name])
                 self.writer.add_scalar(f'{self.num_players}/{player_name}/Policy_Loss', policy_loss, self.iter_counts[player_name])
                 self.writer.add_scalar(f'{self.num_players}/{player_name}/Fold_Loss', fold_loss, self.iter_counts[player_name])
@@ -22,6 +19,7 @@ class Plotter:
                 self.writer.add_scalar(f'{self.num_players}/{player_name}/Money_Value', money_value, self.iter_counts[player_name])
                 self.writer.add_scalar(f'{self.num_players}/{player_name}/Policy_Grad_Norm', policy_grad_norm, self.iter_counts[player_name])
                 self.writer.add_scalar(f'{self.num_players}/{player_name}/Critic_Grad_Norm', critic_grad_norm, self.iter_counts[player_name])
+                self.writer.add_scalar(f'{self.num_players}/{player_name}/Batch_Size', batch_size, self.iter_counts[player_name])
                 self.iter_counts[player_name] += 1
 
     def close(self):

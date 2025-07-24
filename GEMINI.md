@@ -41,7 +41,6 @@ There are currently no automated tests for this project. Assistance in creating 
 ## 6. TODO's
 - Assumes num_players does not change, fix this.
 - Approach is player-style agnostic, potentially would like to add a state vector that describes play-style in some abstract space that is learnt for each player starting with a default rational value.
-- Not only should the num_cards_shown variable be used as input to the NNs but also some encoding of the cards on the table revealed thus far.
 
 ## 7. Prompt Conventions
 When a file/directory name is mentioned using "@", any numbers following the file name (after an additional space) are meant to represent line numbers in the following formats:

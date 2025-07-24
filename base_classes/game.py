@@ -40,6 +40,7 @@ class Game:
         self.evaluator = Evaluator()
         self.player_cards = []
         self.removed_automated_players = []
+        self.hand_counter = 0
 
     def reset(self):
         self.max_bet = 0
@@ -219,7 +220,14 @@ class Game:
         for i in range(self.num_players):
             if isinstance(self.players[i], AutomatedPlayer) and self.players[i].train_network:
                 self.players[i].compute_action_regrets(len(winner_indices), i in winner_indices, winner_score, self.table_cards_string)
-                self.players[i].train_iter()
+                self.players[i].collect_trajectory()
+
+        self.hand_counter += 1
+        if self.hand_counter % 64 == 0:
+            for player in self.players:
+                if isinstance(player, AutomatedPlayer) and player.train_network:
+                    player.train_batch()
+        
         for winner_index in winner_indices:
             self.players[winner_index].add_to_money(self.pot / num_winners)
         winner_names = [self.players[i].get_name() for i in winner_indices]
@@ -238,6 +246,11 @@ class Game:
         return winner
 
     def end(self):
+        # Final training update for any remaining trajectories
+        for player in self.players:
+            if isinstance(player, AutomatedPlayer) and player.train_network:
+                player.train_batch(True)
+
         all_automated_players = self.removed_automated_players + [p for p in self.players if isinstance(p, AutomatedPlayer)]
         all_automated_players.sort(key = lambda x: int(x.get_name()[1 : ]))
         

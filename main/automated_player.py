@@ -62,6 +62,7 @@ class AutomatedPlayer(Player):
 
         super().__init__(name, buy_in, num_players, min_bet)
         self.lmbda = lmbda
+        self.gamma = 0.99 # Discount factor for future rewards
         if player_data_entry:
             initial_lr = player_data_entry[0]
             self.num_updates = player_data_entry[1]
@@ -74,10 +75,10 @@ class AutomatedPlayer(Player):
         self.num_players_round = num_players
         self.pot = 0
         self.max_bet_before_raise = 0
-        self.policy_nn = PolicyNN(3 + 12 * num_players, 32).to(device)
+        self.policy_nn = PolicyNN(3 + 12 * num_players, 128).to(device)
         if load_checkpt_policy != "":
             self.policy_nn.load_state_dict(torch.load(load_checkpt_policy, weights_only = True, map_location = device))
-        self.critic_nn = CriticNN(3 + 12 * num_players, 32).to(device)
+        self.critic_nn = CriticNN(3 + 12 * num_players, 128).to(device)
         if load_checkpt_critic != "":
             self.critic_nn.load_state_dict(torch.load(load_checkpt_critic, weights_only = True, map_location = device))
         self.train_network = train_network
@@ -100,7 +101,8 @@ class AutomatedPlayer(Player):
             self.critic_nn.eval()
         self.round_action_dict = {"self_round_bets" : [], "other_players_round_bets" : [], "other_players_total_round_bets" : [], "other_players_money" : [], "has_folded" : [], "pots" : [], "neg_action_regrets" : [], "num_cards_seen_at_action" : [], "other_players_board_card_encodings": [], "raise_rewards" : []}
         self.nn_vals = {"state_vecs" : [], "action_probs" : [], "log_prob_action" : [], "critic_outputs" : [], "expected_fold_prob_zero" : []}
-        self.plot_data_game = {"critic_losses" : [], "policy_losses" : [], "fold_losses" : [], "total_policy_losses" : [], "rewards" : [], "money_values": [], "policy_grad_norms": [], "critic_grad_norms": []}
+        self.trajectory_buffer = [] # To store trajectories for batch updates
+        self.plot_data_game = {"critic_losses" : [], "policy_losses" : [], "fold_losses" : [], "total_policy_losses" : [], "rewards" : [], "money_values": [], "policy_grad_norms": [], "critic_grad_norms": [], "batch_sizes": []}
         self.num_table_cards_since_cache = -1
         self.cached_probs = [0 for i in range(self.num_players)]
 
@@ -289,7 +291,7 @@ class AutomatedPlayer(Player):
                 for bet in bets:
                     neg_action_regrets.append(-bet)
         
-        neg_action_regrets = [neg_action_regret / money_before_hand for neg_action_regret in neg_action_regrets]
+        neg_action_regrets = [neg_action_regret / self.buy_in for neg_action_regret in neg_action_regrets]
 
         #debug_print(f"neg_action_regrets: {neg_action_regrets}")
         self.round_action_dict["neg_action_regrets"] = neg_action_regrets
@@ -431,30 +433,66 @@ class AutomatedPlayer(Player):
 
         return add_to_pot, self.max_bet
 
-    def train_iter(self):
+    def collect_trajectory(self):
         if len(self.round_action_dict["neg_action_regrets"]) == 0:
             return
 
-        rewards = self.round_action_dict["neg_action_regrets"]
-        log_probs = torch.cat(self.nn_vals["log_prob_action"], dim = 0)
-        critic_values = torch.cat(self.nn_vals["critic_outputs"], dim = 0)
-        action_probs = torch.cat(self.nn_vals["action_probs"], dim = 0)
+        # Store the data for this hand as a single trajectory
+        trajectory = {
+            "rewards": self.round_action_dict["neg_action_regrets"],
+            "log_probs": torch.cat(self.nn_vals["log_prob_action"], dim = 0),
+            "critic_values": torch.cat(self.nn_vals["critic_outputs"], dim = 0),
+            "action_probs": torch.cat(self.nn_vals["action_probs"], dim = 0),
+            "fold_penalty_mask": torch.tensor(self.nn_vals["expected_fold_prob_zero"], device = device)
+        }
+        self.trajectory_buffer.append(trajectory)
 
-        fold_penalty_mask = torch.tensor(self.nn_vals["expected_fold_prob_zero"], device = device)
+    def train_batch(self, is_terminal = False):
+        if len(self.trajectory_buffer) == 0:
+            return
 
-        # Calculate advantages
-        advantages = []
-        with torch.no_grad():
-            for t in range(len(rewards)):
-                v_t = critic_values[t]
-                v_t_plus_1 = critic_values[t + 1] if t < len(rewards) - 1 else 0
-                advantage = rewards[t] + v_t_plus_1 - v_t
-                advantages.append(advantage)
-        advantages = torch.cat(advantages).to(dtype = torch.float32)
+        # Unpack trajectories into batches
+        batch_rewards = []
+        batch_log_probs = []
+        batch_critic_values = []
+        batch_action_probs = []
+        batch_fold_penalty_masks = []
 
-        # Policy loss
-        policy_loss = -(log_probs * advantages).mean()
+        for trajectory in self.trajectory_buffer:
+            batch_rewards.extend(trajectory["rewards"])
+            batch_log_probs.append(trajectory["log_probs"])
+            batch_critic_values.append(trajectory["critic_values"])
+            batch_action_probs.append(trajectory["action_probs"])
+            batch_fold_penalty_masks.append(trajectory["fold_penalty_mask"])
+
+        rewards = torch.tensor(batch_rewards).to(dtype = torch.float32, device = device).unsqueeze(1)
+        log_probs = torch.cat(batch_log_probs, dim = 0).to(dtype = torch.float32, device = device).unsqueeze(1)
+        critic_values = torch.cat(batch_critic_values, dim = 0).to(dtype = torch.float32, device = device)
+        action_probs = torch.cat(batch_action_probs, dim = 0).to(dtype = torch.float32, device = device)
+        fold_penalty_mask = torch.cat(batch_fold_penalty_masks, dim = 0).to(device = device)
         
+        if is_terminal:
+            # Calculate advantages for terminal state
+            with torch.no_grad():
+                critic_values_next = torch.cat([critic_values_next, tensor([[0.0]], device = device)], dim = 0).detach()
+                advantages = rewards + self.gamma * critic_values_next - critic_values
+
+            # Policy loss includes the last action
+            policy_loss = -(log_probs * advantages).mean()
+
+            critic_loss = F.mse_loss(rewards + self.gamma * critic_values_next, critic_values)
+
+        else:
+            # Calculate advantages
+            with torch.no_grad():
+                critic_values_next = critic_values[1 : ].detach()
+                advantages = rewards[ : -1] + self.gamma * critic_values_next - critic_values[ : -1]
+
+            # Policy loss
+            policy_loss = -(log_probs[ : -1] * advantages).mean()
+            
+            critic_loss = F.mse_loss(rewards[ : -1] + self.gamma * critic_values_next, critic_values[ : -1])
+
         # Fold loss
         # Penalize the network for assigning a non-zero probability to folding when it
         # should be forced to check/call (e.g., when all-in or max_bet is met).
@@ -469,25 +507,20 @@ class AutomatedPlayer(Player):
         # Total policy loss
         total_policy_loss = policy_loss + self.lmbda * fold_loss
 
-        # Critic loss
-        suffix_rewards = []
-        for i in range(len(rewards)):
-            suffix_rewards.append(sum(rewards[i : ]))
-        critic_loss = F.mse_loss(torch.tensor(suffix_rewards, device = device, dtype = torch.float32), critic_values.squeeze(-1))
-
         self.plot_data_game["critic_losses"].append(critic_loss.item())
         self.plot_data_game["policy_losses"].append(policy_loss.item())
         self.plot_data_game["fold_losses"].append(fold_loss.item())
         self.plot_data_game["total_policy_losses"].append(total_policy_loss.item())
-        self.plot_data_game["rewards"].append(suffix_rewards[0])
+        self.plot_data_game["rewards"].append(torch.sum(rewards))
         self.plot_data_game["money_values"].append(self.money)
+        self.plot_data_game["batch_sizes"].append(len(batch_rewards))
 
         #debug_print(f"rewards: {rewards}")
         #debug_print(f"log_probs: {log_probs}")
         #debug_print(f"critic_values: {critic_values}")
         #debug_print(f"action_probs: {action_probs}")
         #debug_print(f"advantages: {advantages}")
-        #debug_print(f"suffix_rewards: {suffix_rewards}")
+        #debug_print(f"fold_penalty_mask: {fold_penalty_mask}")
         #debug_print(f"critic_loss: {critic_loss}")
         #debug_print(f"policy_loss: {policy_loss}")
         #debug_print(f"fold_loss: {fold_loss}")
@@ -495,13 +528,13 @@ class AutomatedPlayer(Player):
         # Backpropagation
         self.policy_optimizer.zero_grad()
         total_policy_loss.backward()
-        policy_grad_norm = torch.nn.utils.clip_grad_norm_(self.policy_nn.parameters(), max_norm = 0.5)
+        policy_grad_norm = torch.nn.utils.clip_grad_norm_(self.policy_nn.parameters(), max_norm = 0.1)
         self.policy_optimizer.step()
         self.policy_scheduler.step()
 
         self.critic_optimizer.zero_grad()
         critic_loss.backward()
-        critic_grad_norm = torch.nn.utils.clip_grad_norm_(self.critic_nn.parameters(), max_norm = 0.5)
+        critic_grad_norm = torch.nn.utils.clip_grad_norm_(self.critic_nn.parameters(), max_norm = 0.1)
         self.critic_optimizer.step()
         self.critic_scheduler.step()
 
@@ -511,6 +544,9 @@ class AutomatedPlayer(Player):
         self.num_updates += 1
         if self.num_updates % 50 == 0:
             self.save_model()
+        
+        # Clear the buffer after training
+        self.trajectory_buffer.clear()
 
     def save_model(self):
         if not self.train_network:
