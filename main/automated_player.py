@@ -542,8 +542,7 @@ class AutomatedPlayer(Player):
         self.plot_data_game["critic_grad_norms"].append(critic_grad_norm.item())
 
         self.num_updates += 1
-        if self.num_updates % 50 == 0:
-            self.save_model()
+        self.save_model()
         
         # Clear the buffer after training
         self.trajectory_buffer.clear()
