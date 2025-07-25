@@ -138,7 +138,7 @@ class Game:
             if self.players[ctr].get_money() == 0:
                 if isinstance(self.players[ctr], AutomatedPlayer):
                     self.removed_automated_players.append(self.players[ctr])
-                    player.train_batch(True)
+                    self.players[ctr].train_batch(True)
                 self.players.pop(ctr)
                 if ctr == 0:
                     small_blind_in = False
@@ -148,7 +148,7 @@ class Game:
         while len(self.players) > 1 and self.players[ind % len(self.players)].get_money() < 2 * self.min_bet:
             if isinstance(self.players[ind % len(self.players)], AutomatedPlayer):
                 self.removed_automated_players.append(self.players[ind % len(self.players)])
-                player.train_batch(True)
+                self.players[ind % len(self.players)].train_batch(True)
             self.players.pop(ind % len(self.players))
         self.reset()
         for i in range(self.num_players):
