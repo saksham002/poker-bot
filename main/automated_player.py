@@ -16,6 +16,13 @@ EPS = 1e-6
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+def initialize_weights(modules):
+    for m in modules:
+        if isinstance(m, nn.Linear):
+            nn.init.xavier_uniform_(m.weight)
+            if m.bias is not None:
+                nn.init.constant_(m.bias, 0)
+
 class PolicyNN(nn.Module):
     def __init__(self, input_dim, hidden_dim, output_dim = 3):
         super().__init__()
@@ -25,6 +32,7 @@ class PolicyNN(nn.Module):
         self.fc4 = nn.Linear(hidden_dim, hidden_dim)
         self.fc5a = nn.Linear(hidden_dim, output_dim)
         self.fc5b = nn.Linear(hidden_dim, 1)
+        initialize_weights(self.modules())
 
     def forward(self, x):
         x = F.relu(self.fc1(x))
@@ -43,6 +51,7 @@ class CriticNN(nn.Module):
         self.fc3 = nn.Linear(hidden_dim, hidden_dim)
         self.fc4 = nn.Linear(hidden_dim, hidden_dim)
         self.fc5 = nn.Linear(hidden_dim, 1)
+        initialize_weights(self.modules())
 
     def forward(self, x):
         x = F.relu(self.fc1(x))
@@ -528,13 +537,13 @@ class AutomatedPlayer(Player):
         # Backpropagation
         self.policy_optimizer.zero_grad()
         total_policy_loss.backward()
-        policy_grad_norm = torch.nn.utils.clip_grad_norm_(self.policy_nn.parameters(), max_norm = 0.1)
+        policy_grad_norm = torch.nn.utils.clip_grad_norm_(self.policy_nn.parameters(), max_norm = 0.3)
         self.policy_optimizer.step()
         self.policy_scheduler.step()
 
         self.critic_optimizer.zero_grad()
         critic_loss.backward()
-        critic_grad_norm = torch.nn.utils.clip_grad_norm_(self.critic_nn.parameters(), max_norm = 0.1)
+        critic_grad_norm = torch.nn.utils.clip_grad_norm_(self.critic_nn.parameters(), max_norm = 0.3)
         self.critic_optimizer.step()
         self.critic_scheduler.step()
 
